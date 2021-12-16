@@ -1,0 +1,43 @@
+FROM python:3.9.6-slim-buster as build
+ARG POETRY_VERSION
+
+# set poetry and build environment variables:
+ENV POETRY_VERSION=${POETRY_VERSION} \
+  POETRY_NO_INTERACTION=1 \
+  POETRY_VIRTUALENVS_CREATE=false \
+  POETRY_CACHE_DIR='/var/cache/pypoetry' \
+  PYSETUP_PATH="/opt/pysetup" \
+  POETRY_HOME="/opt/poetry" \
+  POETRY_VIRTUALENVS_IN_PROJECT=true 
+
+ENV PATH="$POETRY_HOME/bin:$PATH"
+
+#install necessary packages
+RUN apt-get update \
+  && apt-get install --no-install-recommends -y \
+  curl
+
+
+RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python - --version ${POETRY_VERSION}
+
+# building base image for project
+FROM build as base-project
+ARG PROJECT_DIR
+
+# copy necessary files to build the project
+WORKDIR ${PYSETUP_PATH}
+COPY libs ./libs
+COPY ${PROJECT_DIR} ./${PROJECT_DIR}
+COPY pyproject.toml .
+COPY poetry.lock .
+
+#Project initialization
+RUN poetry install --no-dev
+
+FROM base-project as dev
+ARG PROJECT_DIR
+
+WORKDIR /${PYSETUP_PATH}
+EXPOSE 8000
+
+CMD ["uvicorn", "--host", "0.0.0.0", "shift_service.server:app", "--port", "8000"]

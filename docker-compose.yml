@@ -1,0 +1,64 @@
+version: '3.3'
+services:
+  traefik:
+      image: "traefik:v2.5"
+      container_name: "traefik"
+      command:
+        - "--api.insecure=true"
+        - "--providers.docker=true"
+        - "--providers.docker.exposedbydefault=false"
+        - "--entrypoints.web.address=:80"
+      ports:
+        - "80:80"
+        - "8080:8080"
+      volumes:
+        - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  db:
+    image: postgres:13
+    volumes:
+      - app-db-data:/var/lib/postgresql/data/pgdata
+    env_file: 
+      - .env
+    environment: 
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports: 
+      - 6543:5432
+    deploy:
+      placement:
+        constraints:
+          - node.labels.${STACK_NAME}.app-db-data == true
+
+  shift_service:
+    build: 
+      target: dev
+      args:
+        POETRY_VERSION: 1.1.7
+        PROJECT_DIR: shift_service
+      dockerfile: docker/dockerfile
+      context: .
+    depends_on: 
+      - db
+      - traefik
+    env_file: 
+      - .env
+    environment: 
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - DATABASE_NAME=${POSTGRES_DB}
+      - DATABASE_HOST=db
+      - DATABASE_USERNAME=${POSTGRES_USER}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.shift_service.rule=Host(`shift_service.localhost`)"
+      - "traefik.http.routers.shift_service.entrypoints=web"
+
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   depends_on: 
+  #     - db
+  #   env_file: 
+  #     - .env
+
+volumes:
+  app-db-data:
